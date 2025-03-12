@@ -1,0 +1,1 @@
+Добавил в `requirements.txt` библиотеки `pydantic` и `pydantic-settings`
