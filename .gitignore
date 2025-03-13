@@ -174,3 +174,5 @@ cython_debug/
 .pypirc
 
 .idea
+
+/3/clickhouse/tables.sql

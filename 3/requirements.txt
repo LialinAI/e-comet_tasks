@@ -1,2 +1,4 @@
 aiohttp==3.11.11
 aiochclient==2.6.0
+pydantic-settings==2.8.1
+pydantic==2.10.6

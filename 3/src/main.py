@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from typing import Final, Any
 import asyncio
 from aiohttp import ClientSession
-from core.config import git_config, app_config
+from core.config import git_config, app_config, clickhouse_config
 from datetime import datetime, timedelta
 from collections import defaultdict
+from aiochclient import ChClient
 
 GITHUB_API_BASE_URL: Final[str] = "https://api.github.com"
 
@@ -98,15 +99,61 @@ class GithubReposScrapper:
         await self._session.close()
 
 
+class ClickHouseLoader:
+    def __init__(self, ch_client: ChClient):
+        self._ch_client = ch_client
+
+    async def save_repositories(self, repositories: list[Repository], batch_size: int):
+        today = datetime.now().strftime('%Y-%m-%d')
+        repo_data_batch = []
+        positions_data_batch = []
+        commits_data_batch = []
+
+        for idx, repo in enumerate(repositories):
+            repo_data_batch.append((repo.name, repo.owner,
+                                    repo.stars, repo.watchers,
+                                    repo.forks, repo.language,
+                                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            positions_data_batch.append((today, repo.name, repo.position))
+
+            for author in repo.authors_commits_num_today:
+                commits_data_batch.append(
+                    (today, repo.name, author.author, author.commits_num))
+
+            if len(repo_data_batch) >= batch_size:
+                await self._insert_batch_data(repo_data_batch, positions_data_batch, commits_data_batch)
+
+                repo_data_batch.clear()
+                positions_data_batch.clear()
+                commits_data_batch.clear()
+
+        if repo_data_batch:
+            await self._insert_batch_data(repo_data_batch, positions_data_batch, commits_data_batch)
+
+    async def _insert_batch_data(self, repo_data_batch, positions_data_batch, commits_data_batch):
+        await asyncio.gather(
+            self._ch_client.execute("""INSERT INTO test.repositories VALUES""", *repo_data_batch),
+            self._ch_client.execute("""INSERT INTO test.repositories_positions VALUES""", *positions_data_batch),
+            self._ch_client.execute("""INSERT INTO test.repositories_authors_commits VALUES""", *commits_data_batch)
+        )
+
+
 if __name__ == "__main__":
     async def main():
-        scrapper = GithubReposScrapper(access_token=git_config.github_token,
-                                       mcr=app_config.mcr,
-                                       rps=app_config.rps
-                                       )
-        repositories = await scrapper.get_repositories()
-        print(repositories)
-        await scrapper.close()
+        async with ChClient(url=clickhouse_config.url,
+                            user=clickhouse_config.user,
+                            password=clickhouse_config.password,
+                            database=clickhouse_config.db
+                            ) as client:
+            scrapper = GithubReposScrapper(access_token=git_config.github_token,
+                                           mcr=app_config.mcr,
+                                           rps=app_config.rps
+                                           )
+
+            repositories = await scrapper.get_repositories()
+            loader = ClickHouseLoader(client)
+            await loader.save_repositories(repositories, app_config.batch_size)
+            await scrapper.close()
 
 
     asyncio.run(main())
