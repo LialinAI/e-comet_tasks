@@ -1,4 +1,9 @@
-CREATE TABLE phrases_views
+CREATE USER IF NOT EXISTS '****' IDENTIFIED WITH plaintext_password BY '****';
+GRANT ALL ON test.* TO '****';
+
+CREATE DATABASE IF NOT EXISTS test;
+
+CREATE TABLE test.phrases_views
 (
     dt          DateTime,
     campaign_id Int32 comment 'Идентификатор рекламной кампании',
@@ -6,7 +11,7 @@ CREATE TABLE phrases_views
     views       Int32 comment 'Кумулятивное (суммарное) количество просмотров по поисковому запросу за всё время'
 ) engine = ReplacingMergeTree ORDER BY (dt, campaign_id, phrase);
 
-INSERT INTO phrases_views (dt, campaign_id, phrase, views)
+INSERT INTO test.phrases_views (dt, campaign_id, phrase, views)
 VALUES ('2025-01-01 11:50:00', 1111111, 'платье', 100),
        ('2025-01-01 12:00:00', 1111111, 'платье', 100),
        ('2025-01-01 12:10:00', 1111111, 'платье', 100),
